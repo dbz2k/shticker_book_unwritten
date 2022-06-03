@@ -1,0 +1,29 @@
+name: Building Windows Release Build
+on: [push, pull_request]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --release
+   # - name: Archive code coverage results
+    #  uses: actions/upload-artifact@v3
+     # with:
+      #    name: shticker_book_unwritten_win.exe
+       #   path: target/release/shticker_book_unwritten.exe
+    - name: Release The Build
+      uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "latest"
+          prerelease: true
+          title: "Windows Release Build"
+          files: |
+            target/release/shticker_book_unwritten.exe
+    
