@@ -39,5 +39,7 @@ jobs:
         #  prerelease: false
          # title: "Linux Release Build"
           #files: |
-           #target/release/shticker_book_unwritten
+           #/target/release/shticker_book_unwritten
+           #/target/x86_64-pc-windows-gnu/release/shticker_book_unwritten.exe
+
     
