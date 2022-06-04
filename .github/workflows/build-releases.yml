@@ -31,15 +31,15 @@ jobs:
 
       
       
-   # - name: Release The Build
-    #  uses: "marvinpinto/action-automatic-releases@latest"
-     # with:
-      #    repo_token: "${{ secrets.GITHUB_TOKEN }}"
-       #   automatic_release_tag: "latest"
-        #  prerelease: false
-         # title: "Linux Release Build"
-          #files: |
-           #/target/release/shticker_book_unwritten
-           #/target/x86_64-pc-windows-gnu/release/shticker_book_unwritten.exe
+    - name: Release The Build
+      uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "latest"
+          prerelease: false
+          title: "Release Build"
+          files: |
+           /target/release/shticker_book_unwritten
+           /target/x86_64-pc-windows-gnu/release/shticker_book_unwritten.exe
 
     
