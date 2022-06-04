@@ -17,8 +17,13 @@ jobs:
       run: |
        rustup target add x86_64-pc-windows-gnu
        rustup toolchain install stable-x86_64-pc-windows-gnu
+     
+    - name: Building Windows Release
+      run: cargo build --target --release x86_64-pc-windows-gnu
+     
+     
 
-    - name: Build
+    - name: Building Linux Release
       run: cargo build --release
       
       
