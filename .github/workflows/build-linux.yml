@@ -20,7 +20,7 @@ jobs:
      #     name: shticker_book_unwritten
       #    path: target/release/shticker_book_unwritten
     - name: test
-      run: touch text.txt
+      run: touch test.txt
     - name: Release The Build
       uses: "marvinpinto/action-automatic-releases@latest"
       with:
