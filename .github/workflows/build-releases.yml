@@ -36,7 +36,7 @@ jobs:
           prerelease: false
           title: "Release Build"
           files: |
-           /target/release/shticker_book_unwritten
-           /target/x86_64-pc-windows-gnu/release/shticker_book_unwritten.exe
+           target/release/shticker_book_unwritten
+           target/x86_64-pc-windows-gnu/release/shticker_book_unwritten.exe
 
     
