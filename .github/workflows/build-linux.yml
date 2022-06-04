@@ -12,15 +12,11 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v3
+      
     - name: Build
       run: cargo build --release
-  #  - name: Archive code coverage results
-   #   uses: actions/upload-artifact@v3
-    #  with:
-     #     name: shticker_book_unwritten
-      #    path: target/release/shticker_book_unwritten
-    - name: test
-      run: touch test.txt
+      
+      
     - name: Release The Build
       uses: "marvinpinto/action-automatic-releases@latest"
       with:
@@ -29,5 +25,5 @@ jobs:
           prerelease: false
           title: "Linux Release Build"
           files: |
-           test.txt
+           target/release/shticker_book_unwritten
     
