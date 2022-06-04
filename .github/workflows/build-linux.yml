@@ -16,7 +16,7 @@ jobs:
     - name: Cross Compile
       run: |
        rustup target add x86_64-pc-windows-gnu
-       rustup toolchain install stable-x86_64-pc-windows-gnu
+       rustup toolchain --force-non-host install stable-x86_64-pc-windows-gnu
      
     - name: Building Windows Release
       run: cargo build --release --target x86_64-pc-windows-gnu
