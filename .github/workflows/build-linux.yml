@@ -1,6 +1,6 @@
 
   
-name: Building Linux Release Build
+name: Building Release Build
 on: [push]
 
 env:
@@ -26,14 +26,18 @@ jobs:
     - name: Building Linux Release
       run: cargo build --release
       
+    - name: Find
+      run: find . -name "*exe"
+
       
-    - name: Release The Build
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: "latest"
-          prerelease: false
-          title: "Linux Release Build"
-          files: |
-           target/release/shticker_book_unwritten
+      
+   # - name: Release The Build
+    #  uses: "marvinpinto/action-automatic-releases@latest"
+     # with:
+      #    repo_token: "${{ secrets.GITHUB_TOKEN }}"
+       #   automatic_release_tag: "latest"
+        #  prerelease: false
+         # title: "Linux Release Build"
+          #files: |
+           #target/release/shticker_book_unwritten
     
