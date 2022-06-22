@@ -67,7 +67,7 @@ jobs:
          steps:
          - uses: actions/download-artifact@v3
            with:
-            name: my-artifact
+            name: shticker_book_unwritten_linux,shticker_book_unwritten_macos_arm64,shticker_book_unwritten_win.exe
          - name: Display structure of downloaded files
            run: ls -R
          
