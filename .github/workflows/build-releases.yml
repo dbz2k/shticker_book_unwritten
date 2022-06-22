@@ -42,6 +42,29 @@ jobs:
               with:
                name: shticker_book_unwritten_linux
                path: target/release/shticker_book_unwritten
+               
+    Mac:
+        name: Mac Release Build
+        runs-on: macos-latest
+        needs: Linux
+        steps:
+          - name: Checkout Code
+            uses: actions/checkout@v3
+            
+          - name: Install Cross Compile Tools
+            run: rustup target add aarch64-apple-darwin	
+            
+          - name: Building macOS Release Build (ARM64)
+            run: cargo build --release --target aarch64-apple-darwin
+          
+          - name: Upload Artifacts
+            uses: actions/upload-artifact@v3
+            with:
+               name: shticker_book_unwritten_macos_arm64
+               path: target/aarch64-apple-darwin/release/shticker_book_unwritten
+             
+            
+          
        
      
               
