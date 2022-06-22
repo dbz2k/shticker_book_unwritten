@@ -68,11 +68,9 @@ jobs:
          
          - name: Download Artifacts
            uses: actions/download-artifact@v3
-           with:
-            path: ~/downloads/
   
-        # - name: Display structure of downloaded files
-         #  run: ls -R
+         - name: Display structure of downloaded files
+           run: ls -R
 
          - name: Release The Build
            uses: "marvinpinto/action-automatic-releases@latest"
@@ -82,9 +80,9 @@ jobs:
             prerelease: false
             title: "Release Build"
             files: |
-             /downloads/shticker_book_unwritten_linux
-             /downloads/shticker_book_unwritten_macos_arm64
-             /downloads/shticker_book_unwritten_win.exe
+             /shticker_book_unwritten_linux/shticker_book_unwritten_linux
+             /shticker_book_unwritten_macos_arm64/shticker_book_unwritten_macos_arm64
+             /shticker_book_unwritten_win.exe/shticker_book_unwritten_win.exe
          
     
             
