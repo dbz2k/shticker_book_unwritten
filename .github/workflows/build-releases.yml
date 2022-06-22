@@ -70,7 +70,7 @@ jobs:
            uses: actions/download-artifact@v3
   
          - name: Display structure of downloaded files
-           run: ls -R
+           run: ls -d */
 
          - name: Release The Build
            uses: "marvinpinto/action-automatic-releases@latest"
