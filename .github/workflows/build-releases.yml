@@ -18,15 +18,12 @@ jobs:
          - name: Building Windows Release Build
            run: cargo build --release
            
-         - name: Release The Build
-           uses: "marvinpinto/action-automatic-releases@latest"
+         - name: Upload Artifacts 
+           uses: actions/upload-artifact@v3
            with:
-              repo_token: "${{ secrets.GITHUB_TOKEN }}"
-              automatic_release_tag: "latest"
-              prerelease: false
-              title: "Release Build"
-              files: |
-                 target/release/shticker_book_unwritten.exe
+            name: shticker_book_unwritten_win.exe
+            path: target/release/shticker_book_unwritten.exe
+
 
 
     Linux:
@@ -39,15 +36,17 @@ jobs:
             - name: Building Linux Release Build
               run: cargo build --release
               
-            - name: Release The Build
-              uses: "marvinpinto/action-automatic-releases@latest"
+            - name: Upload Artifacts 
+              uses: actions/upload-artifact@v3
               with:
-                 repo_token: "${{ secrets.GITHUB_TOKEN }}"
-                 automatic_release_tag: "latest"
-                 prerelease: false
-                 title: "Release Build"
-                 files: |
-                  target/release/shticker_book_unwritten
+               name: shticker_book_unwritten_linux
+               path: target/release/shticker_book_unwritten
+       
+     
+              
+
+              
+
 
 
     
