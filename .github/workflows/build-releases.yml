@@ -69,8 +69,20 @@ jobs:
          - name: Download Artifacts
            uses: actions/download-artifact@v3
   
-         - name: Display structure of downloaded files
-           run: ls -R
+        # - name: Display structure of downloaded files
+         #  run: ls -R
+
+         - name: Release The Build
+           uses: "marvinpinto/action-automatic-releases@latest"
+           with:
+            repo_token: "${{ secrets.GITHUB_TOKEN }}"
+            automatic_release_tag: "latest"
+            prerelease: false
+            title: "Release Build"
+            files: |
+             shticker_book_unwritten_linux
+             shticker_book_unwritten_macos_arm64
+             shticker_book_unwritten_win.exe
          
     
             
