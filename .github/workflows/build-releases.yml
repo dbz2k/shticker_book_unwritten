@@ -17,6 +17,7 @@ jobs:
       run: |
        sudo apt-get install gcc-mingw-w64-x86-64 -y
        rustup target add x86_64-pc-windows-gnu
+       rustup target add aarch64-apple-darwin	
        
     - name: Building Windows Release
       run: cargo build --release --target x86_64-pc-windows-gnu
@@ -26,6 +27,11 @@ jobs:
     - name: Building Linux Release
       run: cargo build --release
       
+    - name: Building macOS ARM64 Release
+      run: cargo build --release --target aarch64-apple-darwin
+     
+    - name: Rename Binaries
+    - run: mv target/aarch64-apple-darwin/shticker_book_unwritten target/aarch64-apple-darwin/shticker_book_unwritten_arm64_darwin
       
       
     - name: Release The Build
@@ -38,5 +44,6 @@ jobs:
           files: |
            target/release/shticker_book_unwritten
            target/x86_64-pc-windows-gnu/release/shticker_book_unwritten.exe
+           target/aarch64-apple-darwin/shticker_book_unwritten_arm64_darwin
 
     
