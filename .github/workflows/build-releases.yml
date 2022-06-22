@@ -68,6 +68,13 @@ jobs:
          
          - name: Download Artifacts
            uses: actions/download-artifact@v3
+        
+         - name: Zip Artifacts
+           run: |
+                zip -r shticker_book_unwritten_win.zip shticker_book_unwritten_win
+                zip -r shticker_book_unwritten_linux.zip shticker_book_unwritten_linux
+                zip -r shticker_book_unwritten_macos_arm64.zip shticker_book_unwritten_macos_arm64
+                
   
          - name: Display structure of downloaded files
            run: |
@@ -83,9 +90,9 @@ jobs:
             prerelease: false
             title: "Release Build"
             files: |
-             shticker_book_unwritten_win/shticker_book_unwritten_win.exe
-             shticker_book_unwritten_linux/shticker_book_unwritten_linux
-             shticker_book_unwritten_macos_arm64/shticker_book_unwritten_macos_arm64
+             shticker_book_unwritten_win.zip
+             shtickshticker_book_unwritten_linux.zip
+             shticker_book_unwritten_macos_arm64.zip
              
          
     
