@@ -29,7 +29,6 @@ jobs:
     Linux:
         name: Linux Release Build
         runs-on: ubuntu-latest
-        needs: Windows
         steps:
             - name: Checkout Code
               uses: actions/checkout@v3
@@ -46,7 +45,6 @@ jobs:
     Mac:
         name: Mac Release Build
         runs-on: macos-latest
-        needs: Linux
         steps:
           - name: Checkout Code
             uses: actions/checkout@v3
@@ -62,6 +60,10 @@ jobs:
             with:
                name: shticker_book_unwritten_macos_arm64
                path: target/aarch64-apple-darwin/release/shticker_book_unwritten
+            
+               
+               
+        
              
             
           
