@@ -21,7 +21,7 @@ jobs:
          - name: Upload Artifacts 
            uses: actions/upload-artifact@v3
            with:
-            name: shticker_book_unwritten_win.exe
+            name: shticker_book_unwritten_win
             path: target/release/shticker_book_unwritten.exe
 
 
@@ -52,14 +52,24 @@ jobs:
           - name: Install Cross Compile Tools
             run: rustup target add aarch64-apple-darwin	
             
+          - name: Building macOS Release Build (Intel)
+            run: cargo build --release
+
           - name: Building macOS Release Build (ARM64)
             run: cargo build --release --target aarch64-apple-darwin
           
-          - name: Upload Artifacts
+          - name: Upload Artifacts (ARM64)
             uses: actions/upload-artifact@v3
             with:
                name: shticker_book_unwritten_macos_arm64
                path: target/aarch64-apple-darwin/release/shticker_book_unwritten
+
+          - name: Upload Artifacts (Intel)
+            uses: actions/upload-artifact@v3
+            with:
+               name: shticker_book_unwritten_macos_intel
+               path: target/release/shticker_book_unwritten
+
     Upload-Releases:
          name: Upload Release
          runs-on: ubuntu-latest
@@ -69,18 +79,18 @@ jobs:
          - name: Download Artifacts
            uses: actions/download-artifact@v3
         
+         - name: Display structure of downloaded files
+           run: |
+                ls -d */
+
+
          - name: Zip Artifacts
            run: |
                 zip -r shticker_book_unwritten_win.zip shticker_book_unwritten_win
                 zip -r shticker_book_unwritten_linux.zip shticker_book_unwritten_linux
                 zip -r shticker_book_unwritten_macos_arm64.zip shticker_book_unwritten_macos_arm64
+                zip -r shticker_book_unwritten_macos_intel.zip shticker_book_unwritten_macos_intel
                 
-  
-         - name: Display structure of downloaded files
-           run: |
-                ls -d */
-                cd shticker_book_unwritten_macos_arm64/ && ls
-
 
          - name: Release The Build
            uses: "marvinpinto/action-automatic-releases@latest"
@@ -93,6 +103,7 @@ jobs:
              shticker_book_unwritten_win.zip
              shtickshticker_book_unwritten_linux.zip
              shticker_book_unwritten_macos_arm64.zip
+             shticker_book_unwritten_macos_intel.zip
              
          
     
