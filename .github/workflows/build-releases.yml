@@ -6,42 +6,48 @@ on: [push]
 env:
   CARGO_TERM_COLOR: always
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v3
-      
-    - name: Install Cross Compile Tools
-      run: |
-       sudo apt-get install gcc-mingw-w64-x86-64 -y
-       rustup target add x86_64-pc-windows-gnu
-       rustup target add aarch64-apple-darwin	
-       
-    - name: Building Windows Release
-      run: cargo build --release --target x86_64-pc-windows-gnu
 
-    - name: Building Linux Release
-      run: cargo build --release
-      
-    - name: Building macOS ARM64 Release
-      run: cargo build --release --target aarch64-apple-darwin
-     
-    - name: Rename Binaries
-      run: mv target/aarch64-apple-darwin/shticker_book_unwritten target/aarch64-apple-darwin/shticker_book_unwritten_arm64_darwin
-      
-      
-    - name: Release The Build
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: "latest"
-          prerelease: false
-          title: "Release Build"
-          files: |
-           target/release/shticker_book_unwritten
-           target/x86_64-pc-windows-gnu/release/shticker_book_unwritten.exe
-           target/aarch64-apple-darwin/shticker_book_unwritten_arm64_darwin
+jobs:
+    Windows:
+        name: Windows Release Build
+        runs-on: windows-latest
+        steps:
+         - name: Checkout Code
+           uses: actions/checkout@v3
+           
+         - name: Building Windows Release Build
+           run: cargo build --release
+           
+         - name: Release The Build
+           uses: "marvinpinto/action-automatic-releases@latest"
+           with:
+              repo_token: "${{ secrets.GITHUB_TOKEN }}"
+              automatic_release_tag: "latest"
+              prerelease: false
+              title: "Release Build"
+              files: |
+                 target/release/shticker_book_unwritten.exe
+
+
+    Linux:
+        name: Linux Release Build
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v3
+              
+            - name: Building Linux Release Build
+              run: cargo build --release
+              
+            - name: Release The Build
+              uses: "marvinpinto/action-automatic-releases@latest"
+              with:
+                 repo_token: "${{ secrets.GITHUB_TOKEN }}"
+                 automatic_release_tag: "latest"
+                 prerelease: false
+                 title: "Release Build"
+                 files: |
+                  target/release/shticker_book_unwritten
+
 
     
