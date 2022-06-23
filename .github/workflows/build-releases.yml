@@ -86,10 +86,11 @@ jobs:
 
          - name: Zip Artifacts
            run: |
-                zip -r shticker_book_unwritten_win.zip         shticker_book_unwritten/shticker_book_unwritten_win
-                zip -r shticker_book_unwritten_linux.zip       shticker_book_unwritten/shticker_book_unwritten_linux
-                zip -r shticker_book_unwritten_macos_arm64.zip shticker_book_unwritten/shticker_book_unwritten_macos_arm64
-                zip -r shticker_book_unwritten_macos_intel.zip shticker_book_unwritten/shticker_book_unwritten_macos_intel
+                zip -r shticker_book_unwritten_win.zip shticker_book_unwritten_win/
+                zip -r shticker_book_unwritten_linux.zip shticker_book_unwritten_linux/
+                zip -r shticker_book_unwritten_macos_arm64.zip shticker_book_unwritten_macos_arm64/
+                zip -r shticker_book_unwritten_macos_intel.zip shticker_book_unwritten_macos_intel/
+
                 
 
          - name: Release The Build
@@ -100,10 +101,7 @@ jobs:
             prerelease: false
             title: "Release Build"
             files: |
-             shticker_book_unwritten_win.zip
-             shtickshticker_book_unwritten_linux.zip
-             shticker_book_unwritten_macos_arm64.zip
-             shticker_book_unwritten_macos_intel.zip
+             *.zip
              
          
     
