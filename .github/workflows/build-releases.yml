@@ -79,9 +79,9 @@ jobs:
          - name: Download Artifacts
            uses: actions/download-artifact@v3
         
-         - name: Display structure of downloaded files
-           run: |
-                ls -d */
+        # - name: Display structure of downloaded files
+         #  run: |
+          #      ls -d */
 
 
          - name: Zip Artifacts
