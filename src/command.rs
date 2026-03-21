@@ -1,4 +1,4 @@
-use crate::{config::Config, error::Error, login, update};
+use crate::{accounts, config::Config, error::Error, login, update};
 use clap::{crate_name, crate_version};
 use reqwest::blocking as rb;
 use std::{
@@ -11,19 +11,20 @@ use std::{
 const HELP_TEXT: &str = "\
 Commands
 ========
-  help, ?                    Display this help text.
-  about                      Display info about this program.
-  quit, exit                 Quit this program.
-  update, up                 Update the game files. Specify -y or --dry-update
-    [-y | --dry-update]        to only check if updates are available.
-  login, play, launch        Launch TTR. Specify -n or --no-save to not save
-    [usernames...]             logins, even if successful.
-    [-n | --no-save]
-  instances, running         List currently running TTR instances.
-  kill, close <instance>     Forcibly close a running TTR instance. The
-                               instance is specified by its PID or by its
-                               username.
-  accounts, logins           List all saved accounts/logins.
+help, ?                    Display this help text.
+about                      Display info about this program.
+quit, exit                 Quit this program.
+update, up                 Update the game files. Specify -y or --dry-update to
+  [-y | --dry-update]        only check whether updates are available.
+login, play, launch        Launch the game. Specify -n or --no-save to not save
+  [usernames...]             logins, even if successful.
+  [-n | --no-save]
+instances, running         List currently running game instances.
+kill, close <instance>     Forcibly close a running game instance. The instance
+                             is specified by its PID or by its username.
+accounts, logins           List all saved accounts/logins. Use the help
+                             subcommand for info on account-management
+                             subcommands.
 ";
 const ABOUT_TEXT: &str = concat!(
     crate_name!(),
@@ -74,11 +75,11 @@ pub fn enter_command_mode<'a, P: AsRef<Path>, U: Iterator<Item = &'a str>>(
 
     'outer: loop {
         print!("> ");
-        io::stdout().flush().map_err(Error::StdoutError)?;
+        io::stdout().flush().map_err(Error::Stdout)?;
         command_buf.clear();
         io::stdin()
             .read_line(&mut command_buf)
-            .map_err(Error::StdinError)?;
+            .map_err(Error::Stdin)?;
 
         // ^D
         if command_buf.is_empty() {
@@ -91,7 +92,7 @@ pub fn enter_command_mode<'a, P: AsRef<Path>, U: Iterator<Item = &'a str>>(
             .filter(|arg| !arg.is_empty());
         match argv.next() {
             None => check_children(quiet, &mut children)?,
-            Some("help") | Some("?") => {
+            Some("help" | "?") => {
                 help();
                 check_children(quiet, &mut children)?;
             }
@@ -99,45 +100,45 @@ pub fn enter_command_mode<'a, P: AsRef<Path>, U: Iterator<Item = &'a str>>(
                 about();
                 check_children(quiet, &mut children)?;
             }
-            Some("quit") | Some("exit") => {
+            Some("quit" | "exit") => {
                 check_children(quiet, &mut children)?;
                 if children.is_empty() {
                     break;
                 } else if children.len() == 1 {
                     print!(
-                        "Are you sure are you want to exit? There's still a \
+                        "Are you sure that you want to exit? There's still a \
                          game instance running. [y/n]\n> ",
                     );
                 } else {
                     print!(
-                        "Are you sure are you want to exit? There are still \
+                        "Are you sure that you want to exit? There are still \
                          {} game instances running. [y/n]\n> ",
                         children.len(),
                     );
                 }
 
-                io::stdout().flush().map_err(Error::StdoutError)?;
+                io::stdout().flush().map_err(Error::Stdout)?;
                 command_buf.clear();
                 io::stdin()
                     .read_line(&mut command_buf)
-                    .map_err(Error::StdinError)?;
+                    .map_err(Error::Stdin)?;
 
                 loop {
-                    match command_buf.trim_start().as_bytes().get(0) {
-                        Some(b'y') | Some(b'Y') => break 'outer,
-                        Some(b'n') | Some(b'N') => break,
+                    match command_buf.trim_start().as_bytes().first() {
+                        Some(b'y' | b'Y') => break 'outer,
+                        Some(b'n' | b'N') => break,
                         _ => (),
                     }
 
                     print!("[y/n]?\n> ");
-                    io::stdout().flush().map_err(Error::StdoutError)?;
+                    io::stdout().flush().map_err(Error::Stdout)?;
                     command_buf.clear();
                     io::stdin()
                         .read_line(&mut command_buf)
-                        .map_err(Error::StdinError)?;
+                        .map_err(Error::Stdin)?;
                 }
             }
-            Some("update") | Some("up") => {
+            Some("update" | "up") => {
                 check_children(quiet, &mut children)?;
 
                 let mut dry = false;
@@ -145,35 +146,31 @@ pub fn enter_command_mode<'a, P: AsRef<Path>, U: Iterator<Item = &'a str>>(
                     match arg {
                         "-y" | "--dry-update" => dry = true,
                         _ => {
-                            println!("Unexpected argument: {}", arg);
+                            println!("Unexpected argument: {arg}");
 
                             continue 'outer;
                         }
                     }
                 }
 
-                if dry {
-                    update::update(config, client, quiet, max_tries, dry)?
+                if dry || children.is_empty() {
+                    update::update(config, client, quiet, max_tries, dry)?;
+                } else if children.len() == 1 {
+                    println!(
+                        "There's still a game instance running; can't update \
+                         now!\n(Pass in -y or --dry-update if you just want \
+                         to check for updates.)",
+                    );
                 } else {
-                    if children.is_empty() {
-                        update::update(config, client, quiet, max_tries, dry)?
-                    } else if children.len() == 1 {
-                        println!(
-                            "There's still a game instance running, can't \
-                             update now!\n(Pass in -y or --dry-update if you \
-                             just want to check for updates.)",
-                        );
-                    } else {
-                        println!(
-                            "There are still {} game instances running, \
-                             can't update now!\n(Pass in -y or --dry-update \
-                             if you just want to check for updates.)",
-                            children.len(),
-                        );
-                    }
+                    println!(
+                        "There are still {} game instances running; can't \
+                         update now!\n(Pass in -y or --dry-update if you just \
+                         want to check for updates.)",
+                        children.len(),
+                    );
                 }
             }
-            Some("login") | Some("play") | Some("launch") => {
+            Some("login" | "play" | "launch") => {
                 login::login(
                     config,
                     &config_path,
@@ -184,17 +181,36 @@ pub fn enter_command_mode<'a, P: AsRef<Path>, U: Iterator<Item = &'a str>>(
                 )?;
                 check_children(quiet, &mut children)?;
             }
-            Some("instances") | Some("running") => {
+            Some("instances" | "running") => {
                 check_children(quiet, &mut children)?;
                 display_instances(&children);
             }
-            Some("kill") | Some("close") => {
+            Some("kill" | "close") => {
                 check_children(quiet, &mut children)?;
                 kill_instance(quiet, &mut children, argv.next())?;
             }
-            Some("accounts") | Some("logins") => {
+            Some("accounts" | "logins") => {
                 check_children(quiet, &mut children)?;
-                display_accounts(config, &children)?;
+                match argv.next() {
+                    None => accounts::display_accounts(config, &children)?,
+                    Some("help" | "?") => accounts::accounts_help(),
+                    Some("forget") => accounts::forget_account(
+                        config,
+                        &config_path,
+                        quiet,
+                        argv.next(),
+                    )?,
+                    Some("savepws") => accounts::set_store_passwords(
+                        config,
+                        &config_path,
+                        quiet,
+                        argv.next(),
+                    )?,
+                    _ => println!(
+                        "Unrecognized accounts subcommand.\nType accounts \
+                         help or accounts ? to get a list of subcommands."
+                    ),
+                }
             }
             _ => {
                 check_children(quiet, &mut children)?;
@@ -210,18 +226,14 @@ pub fn enter_command_mode<'a, P: AsRef<Path>, U: Iterator<Item = &'a str>>(
 }
 
 fn help() {
-    print!("{}", HELP_TEXT);
+    print!("{HELP_TEXT}");
 }
 
 fn about() {
-    print!("{}", ABOUT_TEXT);
+    print!("{ABOUT_TEXT}");
 }
 
 fn display_instances(instances: &[(String, process::Child, time::Instant)]) {
-    if instances.is_empty() {
-        return;
-    }
-
     fn count_decimal_digits(n: u32) -> usize {
         if n >= 100_000 {
             if n >= 10_000_000 {
@@ -238,11 +250,7 @@ fn display_instances(instances: &[(String, process::Child, time::Instant)]) {
                 6
             }
         } else if n >= 1_000 {
-            if n >= 10_000 {
-                5
-            } else {
-                4
-            }
+            if n >= 10_000 { 5 } else { 4 }
         } else if n >= 100 {
             3
         } else if n >= 10 {
@@ -250,6 +258,10 @@ fn display_instances(instances: &[(String, process::Child, time::Instant)]) {
         } else {
             1
         }
+    }
+
+    if instances.is_empty() {
+        return;
     }
 
     let (max_name_len, max_pid_len) = instances.iter().fold(
@@ -266,8 +278,8 @@ fn display_instances(instances: &[(String, process::Child, time::Instant)]) {
     for _ in 0..max_name_len.saturating_sub("username".len()) {
         print!(" ");
     }
-    print!("| pid ");
-    for _ in 0..max_pid_len.saturating_sub("pid".len()) {
+    print!("| PID ");
+    for _ in 0..max_pid_len.saturating_sub("PID".len()) {
         print!(" ");
     }
     print!("| uptime\n---------");
@@ -275,19 +287,19 @@ fn display_instances(instances: &[(String, process::Child, time::Instant)]) {
         print!("-");
     }
     print!("+-----");
-    for _ in 0..max_pid_len.saturating_sub("pid".len()) {
+    for _ in 0..max_pid_len.saturating_sub("PID".len()) {
         print!("-");
     }
     println!("+-----------");
     for (name, child, timestamp) in instances {
         let pid = child.id();
 
-        print!("{} ", name);
+        print!("{name} ");
         for _ in 0..max_name_len - name.len() {
             print!(" ");
         }
 
-        print!("| {} ", pid);
+        print!("| {pid} ");
         for _ in 0..max_pid_len - count_decimal_digits(pid) {
             print!(" ");
         }
@@ -296,7 +308,7 @@ fn display_instances(instances: &[(String, process::Child, time::Instant)]) {
         let secs = uptime_sec % 60;
         let minutes = (uptime_sec / 60) % 60;
         let hours = uptime_sec / (60 * 60);
-        println!("| {}h {:02}m {:02}s", hours, minutes, secs);
+        println!("| {hours}h {minutes:02}m {secs:02}s");
     }
 }
 
@@ -305,9 +317,7 @@ fn kill_instance(
     children: &mut Vec<(String, process::Child, time::Instant)>,
     arg: Option<&str>,
 ) -> Result<(), Error> {
-    let instance_str = if let Some(s) = arg {
-        s
-    } else {
+    let Some(instance_str) = arg else {
         println!("Expected the <instance> argument!");
 
         return Ok(());
@@ -344,7 +354,7 @@ fn kill_instance(
 
         if let Err(ioe) = child.kill() {
             if ioe.kind() != io::ErrorKind::InvalidInput {
-                return Err(Error::ProcessKillError(pid, ioe));
+                return Err(Error::ProcessKill(pid, ioe));
             }
         }
 
@@ -352,58 +362,22 @@ fn kill_instance(
             println!("Joining instance's thread...");
         }
 
-        child.wait().map_err(Error::ThreadJoinError)?;
+        child.wait().map_err(Error::ThreadJoin)?;
 
         if !quiet {
-            println!(
-                "Successfully killed {}'s instance with pid {},",
-                name, pid,
-            );
+            println!("Successfully killed {name}'s instance with PID {pid},");
             let secs = uptime_sec % 60;
             let minutes = (uptime_sec / 60) % 60;
             let hours = uptime_sec / (60 * 60);
             println!(
-                "which had an approximate uptime of {}h {:02}m {:02}s.",
-                hours, minutes, secs,
+                "which had an approximate uptime of {hours}h {minutes:02}m \
+                 {secs:02}s."
             );
         }
 
         children.remove(i);
     } else {
-        println!("No currently running instances have that username or pid.");
-    }
-
-    Ok(())
-}
-
-fn display_accounts(
-    config: &Config,
-    children: &[(String, process::Child, time::Instant)],
-) -> Result<(), Error> {
-    let max_name_len = if let Some(l) =
-        config.accounts.iter().map(|(un, _)| un.len()).max()
-    {
-        l
-    } else {
-        return Ok(());
-    };
-
-    for (username, saved_password) in
-        config.accounts.iter().map(|(un, p)| (un, p.is_string()))
-    {
-        print!(
-            "{} {}   ",
-            if children.iter().any(|(un, _, _)| un == username) {
-                '*'
-            } else {
-                ' '
-            },
-            username,
-        );
-        for _ in 0..max_name_len - username.len() {
-            print!(" ");
-        }
-        println!("Password?: {}", if saved_password { "yes" } else { "no" });
+        println!("No currently-running instances have that username or PID.");
     }
 
     Ok(())
@@ -418,21 +392,18 @@ fn check_children(
     let mut i = 0;
     while let Some((username, child, _)) = children.get_mut(i) {
         if let Some(exit_status) =
-            child.try_wait().map_err(Error::ThreadJoinError)?
+            child.try_wait().map_err(Error::ThreadJoin)?
         {
             if !quiet {
                 if exit_status.success() {
-                    println!("{}'s instance exited normally.", username);
+                    println!("{username}'s instance exited normally.");
                 } else if let Some(exit_code) = exit_status.code() {
                     println!(
-                        "{}'s instance exited abnormally. Exit code: {}",
-                        username, exit_code,
+                        "{username}'s instance exited abnormally. Exit code: \
+                         {exit_code}"
                     );
                 } else {
-                    println!(
-                        "{}'s instance was killed by a signal.",
-                        username,
-                    );
+                    println!("{username}'s instance was killed by a signal.");
                 }
             }
 

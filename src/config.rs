@@ -1,7 +1,6 @@
 use crate::{error::Error, util};
 use clap::crate_name;
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::{
     env,
     fs::{self, File},
@@ -17,6 +16,7 @@ const DEFAULT_CDN_URI: &str =
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Config {
     pub install_dir: PathBuf,
+    /// TODO: Implement a way to clear the cache, presumably automatically
     pub cache_dir: PathBuf,
     pub manifest_uri: String,
     pub cdn_uri: String,
@@ -26,6 +26,7 @@ pub struct Config {
 
 impl Config {
     /// Same return type as `BTreeMap::insert`.
+    #[cfg(not(all(target_os = "linux", feature = "secret-store")))]
     pub fn add_account(
         &mut self,
         username: String,
@@ -37,6 +38,10 @@ impl Config {
         } else {
             self.accounts.insert(username, serde_json::Value::Null)
         }
+    }
+
+    pub fn forget_account(&mut self, username: &str) {
+        self.accounts.remove(username);
     }
 }
 
@@ -64,7 +69,27 @@ pub fn get_config(
         }
     };
 
-    if !no_config {
+    if no_config {
+        if !quiet {
+            println!("Not using any config file...");
+        }
+
+        Ok((
+            Config {
+                install_dir: install_path.ok_or_else(|| {
+                    Error::MissingCommandLineArg("--install-dir")
+                })?,
+                cache_dir: cache_path.ok_or_else(|| {
+                    Error::MissingCommandLineArg("--cache-dir")
+                })?,
+                manifest_uri: DEFAULT_MANIFEST_URI.to_owned(),
+                cdn_uri: DEFAULT_CDN_URI.to_owned(),
+                store_passwords: false,
+                accounts: serde_json::Map::default(),
+            },
+            PathBuf::new(),
+        ))
+    } else {
         let config_path = if let Some(s) = config_path {
             s
         } else {
@@ -158,7 +183,7 @@ pub fn get_config(
 
         match File::open(&config_path) {
             Ok(f) => serde_json::from_reader(f)
-                .map_err(Error::DeserializeError)
+                .map_err(Error::Deserialize)
                 .map(|c| (inject_arg_values(c), config_path)),
             Err(ioe) => match ioe.kind() {
                 io::ErrorKind::NotFound => {
@@ -167,7 +192,7 @@ pub fn get_config(
                             Error::BadConfigPath(config_path.clone())
                         })?;
                     fs::create_dir_all(config_dir).map_err(|ioe| {
-                        Error::MkdirError(config_dir.to_path_buf(), ioe)
+                        Error::Mkdir(config_dir.to_path_buf(), ioe)
                     })?;
 
                     let mut new_config_file = util::create_file(&config_path)?;
@@ -177,42 +202,22 @@ pub fn get_config(
                         &mut new_config_file,
                         &new_config,
                     )
-                    .map_err(Error::SerializeError)?;
+                    .map_err(Error::Serialize)?;
 
                     Ok((inject_arg_values(new_config), config_path))
                 }
                 io::ErrorKind::PermissionDenied => {
                     Err(Error::PermissionDenied(
-                        format!("opening {:?}", config_path),
+                        format!("opening {config_path:?}"),
                         ioe,
                     ))
                 }
-                _ => Err(Error::UnknownIoError(
-                    format!("opening {:?}", config_path),
+                _ => Err(Error::UnknownIo(
+                    format!("opening {config_path:?}"),
                     ioe,
                 )),
             },
         }
-    } else {
-        if !quiet {
-            println!("Not using any config file...");
-        }
-
-        Ok((
-            Config {
-                install_dir: install_path.ok_or_else(|| {
-                    Error::MissingCommandLineArg("--install-dir")
-                })?,
-                cache_dir: cache_path.ok_or_else(|| {
-                    Error::MissingCommandLineArg("--cache-dir")
-                })?,
-                manifest_uri: DEFAULT_MANIFEST_URI.to_owned(),
-                cdn_uri: DEFAULT_CDN_URI.to_owned(),
-                store_passwords: false,
-                accounts: serde_json::Map::default(),
-            },
-            PathBuf::new(),
-        ))
     }
 }
 
@@ -221,32 +226,36 @@ fn prompt_for_config_values<P: AsRef<Path>>(
 ) -> Result<Config, Error> {
     print!(
         "No configuration file was found at {}\nAnswer a few prompts, and a \
-         new config file will be created there.\n\nFully qualified path to \
-         desired TTR installation directory\n(will be created if it doesn't \
+         new config file will be created there.\n\nFully-qualified path to \
+         desired installation directory\n(will be created if it doesn't \
          already exist):\n> ",
         config_path.as_ref().display(),
     );
-    io::stdout().flush().map_err(Error::StdoutError)?;
+    io::stdout().flush().map_err(Error::Stdout)?;
     let mut install_dir = String::with_capacity(0x30);
     io::stdin()
         .read_line(&mut install_dir)
-        .map_err(Error::StdinError)?;
+        .map_err(Error::Stdin)?;
 
+    #[cfg(not(all(target_os = "linux", feature = "secret-store")))]
     print!(
         "\nDo you want passwords for your accounts to be stored in the \
-         config file? [yes/no]\nThe passwords will be stored IN PLAIN TEXT, \
+         config file? <yes | no>\nThe passwords will be stored IN PLAIN TEXT, \
          so if you want your passwords to be managed without storing them on \
-         your hard drive in plain text, you will have to use a separate \
+         your filesystem in plain text, then you'll have to use a separate \
          password manager app:\n> "
     );
-    io::stdout().flush().map_err(Error::StdoutError)?;
+    #[cfg(all(target_os = "linux", feature = "secret-store"))]
+    print!(
+        "\nDo you want passwords for your accounts to be stored on your \
+         default Secret Service keyring? <yes | no>\n> "
+    );
+    io::stdout().flush().map_err(Error::Stdout)?;
     let mut yes_no = String::with_capacity(4);
-    io::stdin()
-        .read_line(&mut yes_no)
-        .map_err(Error::StdinError)?;
+    io::stdin().read_line(&mut yes_no).map_err(Error::Stdin)?;
     yes_no.make_ascii_lowercase();
     loop {
-        let yes_no_trimmed = yes_no.as_str().trim();
+        let yes_no_trimmed = yes_no.trim();
         if yes_no_trimmed == "yes" || yes_no_trimmed == "no" {
             println!();
 
@@ -266,12 +275,10 @@ fn prompt_for_config_values<P: AsRef<Path>>(
             });
         }
 
-        print!("Please enter \"yes\" or \"no\" (without quotes):\n> ");
-        io::stdout().flush().map_err(Error::StdoutError)?;
+        print!("Please enter yes or no:\n> ");
+        io::stdout().flush().map_err(Error::Stdout)?;
         yes_no.clear();
-        io::stdin()
-            .read_line(&mut yes_no)
-            .map_err(Error::StdinError)?;
+        io::stdin().read_line(&mut yes_no).map_err(Error::Stdin)?;
         yes_no.make_ascii_lowercase();
     }
 }
@@ -280,8 +287,19 @@ pub fn commit_config<P: AsRef<Path>>(
     config: &Config,
     config_path: P,
 ) -> Result<(), Error> {
-    let mut config_file = util::create_file(&config_path)?;
+    let temp_config_path = config_path
+        .as_ref()
+        .parent()
+        .ok_or_else(|| Error::BadConfigPath(config_path.as_ref().to_owned()))?
+        .join(".config.json.temp");
+    let mut temp_config_file = util::create_file(&temp_config_path)?;
 
-    serde_json::to_writer_pretty(&mut config_file, config)
-        .map_err(Error::SerializeError)
+    serde_json::to_writer_pretty(&mut temp_config_file, config)
+        .map_err(Error::Serialize)?;
+    temp_config_file
+        .write_all(b"\n")
+        .map_err(|e| Error::FileWrite(temp_config_path.clone(), e))?;
+    fs::rename(&temp_config_path, config_path.as_ref()).map_err(|_| {
+        Error::FileRename(temp_config_path, config_path.as_ref().to_owned())
+    })
 }

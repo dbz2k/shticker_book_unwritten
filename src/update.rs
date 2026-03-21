@@ -1,7 +1,6 @@
 use crate::{config::Config, error::Error, patch, util};
 use bzip2::write::BzDecoder as BzWriteDecoder;
 use reqwest::blocking as rb;
-use serde_json;
 use sha1::{Digest, Sha1};
 use std::{
     fs::{self, File},
@@ -32,13 +31,12 @@ pub fn update(
         ensure_dir(&config.cache_dir)?;
     }
 
-    let manifest_map = match get_manifest(config, client, quiet, max_tries)? {
-        serde_json::Value::Object(m) => m,
-        _ => {
-            return Err(Error::BadManifestFormat(
-                "Top-level value is not an Object".to_owned(),
-            ))
-        }
+    let serde_json::Value::Object(manifest_map) =
+        get_manifest(config, client, quiet, max_tries)?
+    else {
+        return Err(Error::BadManifestFormat(
+            "Top-level value is not an Object".to_owned(),
+        ));
     };
 
     if !quiet {
@@ -49,30 +47,26 @@ pub fn update(
     for (i, (file_name, file_obj)) in manifest_map.iter().enumerate() {
         if !quiet {
             println!(
-                "[{:2}/{}] Checking for updates for {}",
+                "[{:2}/{}] Checking for updates for {file_name}",
                 i + 1,
                 manifest_map.len(),
-                file_name,
             );
         }
 
-        let file_map = if let serde_json::Value::Object(m) = file_obj {
-            m
-        } else {
+        let serde_json::Value::Object(file_map) = file_obj else {
             return Err(Error::BadManifestFormat(
                 "Expected Object at 2nd-to-top level".to_owned(),
             ));
         };
 
-        let supported_archs = match file_map.get("only").ok_or_else(|| {
-            Error::BadManifestFormat("Missing the \"only\" key".to_owned())
-        })? {
-            serde_json::Value::Array(v) => v,
-            _ => {
-                return Err(Error::BadManifestFormat(
-                    "Expected \"only\"'s value to be an Array".to_owned(),
-                ))
-            }
+        let serde_json::Value::Array(supported_archs) =
+            file_map.get("only").ok_or_else(|| {
+                Error::BadManifestFormat("Missing the \"only\" key".to_owned())
+            })?
+        else {
+            return Err(Error::BadManifestFormat(
+                "Expected \"only\"'s value to be an Array".to_owned(),
+            ));
         };
         let mut supported_by_this_arch = false;
         for arch_val in supported_archs {
@@ -88,7 +82,7 @@ pub fn update(
                     return Err(Error::BadManifestFormat(
                         "Expected OS & architecture values to be Strings"
                             .to_owned(),
-                    ))
+                    ));
                 }
             }
         }
@@ -123,12 +117,12 @@ pub fn update(
                             install_dir.pop();
 
                             continue;
-                        } else {
-                            println!(
-                                "        File doesn't exist, downloading \
-                                 from scratch..."
-                            );
                         }
+
+                        println!(
+                            "        File doesn't exist; downloading from \
+                             scratch..."
+                        );
                     }
 
                     let mut file_buf = [0u8; BUFFER_SIZE];
@@ -194,15 +188,15 @@ pub fn update(
                 }
                 io::ErrorKind::PermissionDenied => {
                     return Err(Error::PermissionDenied(
-                        format!("opening {:?}", install_dir),
+                        format!("opening {install_dir:?}"),
                         ioe,
-                    ))
+                    ));
                 }
                 _ => {
-                    return Err(Error::UnknownIoError(
-                        format!("opening {:?}", install_dir),
+                    return Err(Error::UnknownIo(
+                        format!("opening {install_dir:?}"),
                         ioe,
-                    ))
+                    ));
                 }
             },
         };
@@ -237,7 +231,7 @@ pub fn update(
         const EXE_NAME: &str = "Toontown Rewritten";
 
         if !quiet {
-            println!("Making sure {} is executable...", EXE_NAME);
+            println!("Making sure {EXE_NAME} is executable...");
         }
 
         install_dir.push(EXE_NAME);
@@ -245,11 +239,11 @@ pub fn update(
             .map_err(|ioe| match ioe.kind() {
                 io::ErrorKind::NotFound => Error::MissingFile(EXE_NAME),
                 io::ErrorKind::PermissionDenied => Error::PermissionDenied(
-                    format!("obtaining metadata for {:?}", install_dir),
+                    format!("obtaining metadata for {install_dir:?}"),
                     ioe,
                 ),
-                _ => Error::UnknownIoError(
-                    format!("obtaining metadata for {:?}", install_dir),
+                _ => Error::UnknownIo(
+                    format!("obtaining metadata for {install_dir:?}"),
                     ioe,
                 ),
             })?
@@ -258,26 +252,26 @@ pub fn update(
         if (ttrengine_mode & 0o100) == 0 {
             if !quiet {
                 println!(
-                    "{} isn't executable, setting executable bit...",
-                    EXE_NAME,
+                    "{EXE_NAME} isn't executable; setting executable bit..."
                 );
             }
 
             ttrengine_perms.set_mode(ttrengine_mode | 0o700);
             fs::set_permissions(&install_dir, ttrengine_perms)
-                .map_err(|ioe| Error::PermissionsSetError(install_dir, ioe))?;
+                .map_err(|ioe| Error::PermissionsSet(install_dir, ioe))?;
 
             if !quiet {
-                println!("{} is now executable!", EXE_NAME);
+                println!("{EXE_NAME} is now executable!");
             }
         } else if !quiet {
-            println!("{} is already executable!", EXE_NAME);
+            println!("{EXE_NAME} is already executable!");
         }
     }
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_existing_file<S: AsRef<str>, P: AsRef<Path>>(
     config: &Config,
     client: &rb::Client,
@@ -290,13 +284,13 @@ fn update_existing_file<S: AsRef<str>, P: AsRef<Path>>(
     full_file_path: P,
 ) -> Result<(), Error> {
     if !quiet {
-        println!("        File exists, checking SHA1 hash...");
+        println!("        File exists; checking SHA-1 hash...");
     }
 
     let mut file_buf = [0u8; BUFFER_SIZE];
     let initial_sha = sha_of_reader(&mut already_existing_file, &mut file_buf)
         .map_err(|ioe| {
-            Error::FileReadError(full_file_path.as_ref().to_path_buf(), ioe)
+            Error::FileRead(full_file_path.as_ref().to_path_buf(), ioe)
         })?;
 
     let manifest_sha = sha_from_hash_str(match file_map.get("hash") {
@@ -304,31 +298,31 @@ fn update_existing_file<S: AsRef<str>, P: AsRef<Path>>(
         Some(_) => {
             return Err(Error::BadManifestFormat(
                 "Value of \"hash\" was not a String".to_owned(),
-            ))
+            ));
         }
         _ => {
             return Err(Error::BadManifestFormat(
                 "\"hash\" key missing".to_owned(),
-            ))
+            ));
         }
     })?;
 
     if initial_sha == manifest_sha {
         if !quiet {
-            println!("        SHA1 hash matches!");
+            println!("        SHA-1 hash matches!");
         }
 
         return Ok(());
     }
 
     if !quiet {
-        print!("        SHA1 hash mismatch:\n          Local:    ");
-        for b in initial_sha.iter() {
-            print!("{:02x}", b);
+        print!("        SHA-1 hash mismatch:\n          Local:    ");
+        for b in &initial_sha {
+            print!("{b:02x}");
         }
         print!("\n          Manifest: ");
-        for b in manifest_sha.iter() {
-            print!("{:02x}", b);
+        for b in &manifest_sha {
+            print!("{b:02x}");
         }
         println!("\n        Checking for a patch...");
     }
@@ -348,18 +342,15 @@ fn update_existing_file<S: AsRef<str>, P: AsRef<Path>>(
         })?;
 
     let mut did_patch = false;
-    for (manifest_sha_str, patch_obj) in patches_map.iter() {
+    for (manifest_sha_str, patch_obj) in patches_map {
         if sha_from_hash_str(manifest_sha_str)? != initial_sha {
             continue;
         }
 
-        let patch_map = match patch_obj {
-            serde_json::Value::Object(m) => m,
-            _ => {
-                return Err(Error::BadManifestFormat(
-                    "Expected \"patches\" to be objects".to_owned(),
-                ))
-            }
+        let serde_json::Value::Object(patch_map) = patch_obj else {
+            return Err(Error::BadManifestFormat(
+                "Expected \"patches\" to be objects".to_owned(),
+            ));
         };
 
         let patch_file_name = patch_map
@@ -382,9 +373,9 @@ fn update_existing_file<S: AsRef<str>, P: AsRef<Path>>(
                 );
 
                 return Ok(());
-            } else {
-                println!("        Found a patch! Downloading it...");
             }
+
+            println!("        Found a patch! Downloading it...");
         }
 
         let mut extracted_patch_file_name =
@@ -452,11 +443,9 @@ fn update_existing_file<S: AsRef<str>, P: AsRef<Path>>(
                 );
 
                 return Ok(());
-            } else {
-                println!(
-                    "        No patches found, downloading from scratch..."
-                );
             }
+
+            println!("        No patches found; downloading from scratch...");
         }
 
         let compressed_file_name = file_map
@@ -510,25 +499,24 @@ fn get_manifest(
     for i in 1..=max_tries.get() {
         let mut handle_retry = |e| {
             eprintln!(
-                "{}{}",
-                e,
+                "{e}{}",
                 if i < max_tries.get() {
-                    ", retrying..."
+                    "; retrying..."
                 } else {
-                    ", no more attempts remaining!"
+                    "; no more attempts remaining!"
                 },
             );
             last_err = Some(e);
         };
 
         if !quiet {
-            println!("Downloading manifest [attempt {}/{}]...", i, max_tries);
+            println!("Downloading manifest [attempt {i}/{max_tries}]...");
         }
 
         let manifest_resp = match client
             .get(&config.manifest_uri)
             .send()
-            .map_err(Error::ManifestRequestError)
+            .map_err(Error::ManifestRequest)
         {
             Ok(mr) => mr,
             Err(e) => {
@@ -538,15 +526,13 @@ fn get_manifest(
             }
         };
         if !manifest_resp.status().is_success() {
-            handle_retry(Error::ManifestRequestStatusError(
-                manifest_resp.status(),
-            ));
+            handle_retry(Error::ManifestRequestStatus(manifest_resp.status()));
 
             continue;
         }
 
         let manifest_text =
-            match manifest_resp.text().map_err(Error::ManifestRequestError) {
+            match manifest_resp.text().map_err(Error::ManifestRequest) {
                 Ok(mt) => mt,
                 Err(e) => {
                     handle_retry(e);
@@ -555,8 +541,7 @@ fn get_manifest(
                 }
             };
 
-        match serde_json::from_str(&manifest_text)
-            .map_err(Error::DeserializeError)
+        match serde_json::from_str(&manifest_text).map_err(Error::Deserialize)
         {
             Err(e) => handle_retry(e),
             ok => return ok,
@@ -590,7 +575,7 @@ fn sha_of_file_by_path<P: AsRef<Path>>(
     let mut n = buf.len();
     while n == buf.len() {
         n = file.read(buf).map_err(|ioe| {
-            Error::FileReadError(path.as_ref().to_path_buf(), ioe)
+            Error::FileRead(path.as_ref().to_path_buf(), ioe)
         })?;
         sha.update(&buf[..n]);
     }
@@ -602,7 +587,7 @@ fn sha_from_hash_str<S: AsRef<str>>(hash_str: S) -> Result<[u8; 20], Error> {
     let mut manifest_sha = [0u8; 20];
     for (i, &b) in hash_str.as_ref().as_bytes().iter().enumerate() {
         let nibble_val = match b {
-            b if b >= b'0' && b <= b'9' => b - b'0',
+            b if b.is_ascii_digit() => b - b'0',
             b'a' | b'A' => 0x0a,
             b'b' | b'B' => 0x0b,
             b'c' | b'C' => 0x0c,
@@ -611,9 +596,9 @@ fn sha_from_hash_str<S: AsRef<str>>(hash_str: S) -> Result<[u8; 20], Error> {
             b'f' | b'F' => 0x0f,
             _ => {
                 return Err(Error::BadManifestFormat(format!(
-                    "Unexpected character in SHA1 hash string: {:?}",
+                    "Unexpected character in SHA-1 hash string: {:?}",
                     b as char,
-                )))
+                )));
             }
         };
 
@@ -671,12 +656,11 @@ fn download_file<S: AsRef<str>, T: AsRef<str>>(
     for i in 1..=max_tries.get() {
         let mut handle_retry = |e| {
             eprintln!(
-                "        {}{}",
-                e,
+                "        {e}{}",
                 if i < max_tries.get() {
-                    ", retrying..."
+                    "; retrying..."
                 } else {
-                    ", no more attempts remaining!"
+                    "; no more attempts remaining!"
                 },
             );
             last_err = Some(e);
@@ -684,27 +668,22 @@ fn download_file<S: AsRef<str>, T: AsRef<str>>(
 
         if !quiet {
             println!(
-                "        Downloading {} [attempt {}/{}]",
+                "        Downloading {} [attempt {i}/{max_tries}]",
                 compressed_file_name.as_ref(),
-                i,
-                max_tries,
             );
         }
 
-        let mut dl_resp = match client
-            .get(&dl_uri)
-            .send()
-            .map_err(Error::DownloadRequestError)
-        {
-            Ok(dr) => dr,
-            Err(e) => {
-                handle_retry(e);
+        let mut dl_resp =
+            match client.get(&dl_uri).send().map_err(Error::DownloadRequest) {
+                Ok(dr) => dr,
+                Err(e) => {
+                    handle_retry(e);
 
-                continue;
-            }
-        };
+                    continue;
+                }
+            };
         if !dl_resp.status().is_success() {
-            handle_retry(Error::DownloadRequestStatusError(dl_resp.status()));
+            handle_retry(Error::DownloadRequestStatus(dl_resp.status()));
 
             continue;
         }
@@ -712,13 +691,13 @@ fn download_file<S: AsRef<str>, T: AsRef<str>>(
         {
             let mut dled_file = util::create_file(&compressed_file_path)?;
             dl_resp.copy_to(&mut dled_file).map_err(|re| {
-                Error::CopyIntoFileError(compressed_file_path.clone(), re)
+                Error::CopyIntoFile(compressed_file_path.clone(), re)
             })?;
         }
 
         if !quiet {
             println!(
-                "        Checking SHA1 hash of {}",
+                "        Checking SHA-1 hash of {}",
                 compressed_file_name.as_ref(),
             );
         }
@@ -726,15 +705,15 @@ fn download_file<S: AsRef<str>, T: AsRef<str>>(
         let dled_sha = sha_of_file_by_path(&compressed_file_path, buf)?;
         if &dled_sha != compressed_sha {
             if !quiet {
-                eprint!("        SHA1 hash mismatch:\n          Local:    ");
-                for b in dled_sha.iter() {
-                    eprint!("{:02x}", b);
+                eprint!("        SHA-1 hash mismatch:\n          Local:    ");
+                for b in &dled_sha {
+                    eprint!("{b:02x}");
                 }
                 eprint!("\n          Manifest: ");
-                for b in compressed_sha.iter() {
-                    eprint!("{:02x}", b);
+                for b in compressed_sha {
+                    eprint!("{b:02x}");
                 }
-                eprintln!("\n        Re-downloading...");
+                eprintln!("\n        Redownloading...");
             }
 
             last_err = Some(Error::HashMismatch(
@@ -746,27 +725,27 @@ fn download_file<S: AsRef<str>, T: AsRef<str>>(
         }
 
         if !quiet {
-            println!("        SHA1 hash matches! Extracting...");
+            println!("        SHA-1 hash matches! Extracting...");
         }
 
         decompress_file(buf, &compressed_file_path, &decompressed_file_path)?;
 
         if !quiet {
-            println!("        Checking SHA1 hash of extracted file...");
+            println!("        Checking SHA-1 hash of extracted file...");
         }
 
         let extracted_sha = sha_of_file_by_path(&decompressed_file_path, buf)?;
         if &extracted_sha != decompressed_sha {
             if !quiet {
-                eprint!("        SHA1 hash mismatch:\n          Local:    ");
-                for b in extracted_sha.iter() {
-                    eprint!("{:02x}", b);
+                eprint!("        SHA-1 hash mismatch:\n          Local:    ");
+                for b in &extracted_sha {
+                    eprint!("{b:02x}");
                 }
                 eprint!("\n          Manifest: ");
-                for b in decompressed_sha.iter() {
-                    eprint!("{:02x}", b);
+                for b in decompressed_sha {
+                    eprint!("{b:02x}");
                 }
-                eprintln!("\n        Re-downloading...");
+                eprintln!("\n        Redownloading...");
             }
 
             last_err = Some(Error::HashMismatch(
@@ -778,7 +757,7 @@ fn download_file<S: AsRef<str>, T: AsRef<str>>(
         }
 
         if !quiet {
-            println!("        SHA1 hash matches!");
+            println!("        SHA-1 hash matches!");
         }
 
         last_err = None;
@@ -795,7 +774,7 @@ fn download_file<S: AsRef<str>, T: AsRef<str>>(
     }
 
     fs::remove_file(&compressed_file_path)
-        .map_err(|ioe| Error::RemoveFileError(compressed_file_path, ioe))?;
+        .map_err(|ioe| Error::RemoveFile(compressed_file_path, ioe))?;
 
     if !quiet {
         println!(
@@ -820,15 +799,15 @@ fn decompress_file<P: AsRef<Path>>(
     let mut n = buf.len();
     while n == buf.len() {
         n = compressed_file.read(buf).map_err(|ioe| {
-            Error::FileReadError(compressed_path.as_ref().to_path_buf(), ioe)
+            Error::FileRead(compressed_path.as_ref().to_path_buf(), ioe)
         })?;
         decoder.write_all(&buf[..n]).map_err(|ioe| {
-            Error::DecodeError(decompress_path.as_ref().to_path_buf(), ioe)
+            Error::Decode(decompress_path.as_ref().to_path_buf(), ioe)
         })?;
     }
 
     decoder.finish().map(|_| ()).map_err(|ioe| {
-        Error::DecodeError(decompress_path.as_ref().to_path_buf(), ioe)
+        Error::Decode(decompress_path.as_ref().to_path_buf(), ioe)
     })
 }
 
@@ -842,16 +821,13 @@ fn ensure_dir<P: AsRef<Path>>(path: P) -> Result<(), Error> {
             }
         }
         Err(ioe) => match ioe.kind() {
-            io::ErrorKind::NotFound => {
-                fs::create_dir_all(&path).map_err(|ioe| {
-                    Error::MkdirError(path.as_ref().to_path_buf(), ioe)
-                })
-            }
+            io::ErrorKind::NotFound => fs::create_dir_all(&path)
+                .map_err(|ioe| Error::Mkdir(path.as_ref().to_path_buf(), ioe)),
             io::ErrorKind::PermissionDenied => Err(Error::PermissionDenied(
                 format!("obtaining metadata for {:?}", path.as_ref()),
                 ioe,
             )),
-            _ => Err(Error::UnknownIoError(
+            _ => Err(Error::UnknownIo(
                 format!("obtaining metadata for {:?}", path.as_ref()),
                 ioe,
             )),

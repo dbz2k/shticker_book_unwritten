@@ -1,18 +1,20 @@
 #![forbid(unsafe_code)]
 #![deny(deprecated)]
 
+mod accounts;
 mod command;
 mod config;
 mod error;
+mod keyring;
 mod login;
 mod patch;
 mod update;
 mod util;
 
 use clap::{
+    Arg, ArgAction, Command,
     builder::{ArgPredicate, ValueParser},
     crate_authors, crate_description, crate_name, crate_version, value_parser,
-    Arg, ArgAction, Command,
 };
 use error::Error;
 use reqwest::blocking as rb;
@@ -57,7 +59,7 @@ fn run() -> Result<(), Error> {
             Arg::new("config")
                 .short('c')
                 .long("config")
-                .aliases(&["conf", "configuration"])
+                .aliases(["conf", "configuration"])
                 .value_name("CONFIG_FILE")
                 .help("Configuration JSON file to use.")
                 .long_help(CONFIG_LONG_HELP)
@@ -69,7 +71,7 @@ fn run() -> Result<(), Error> {
         .arg(
             Arg::new("no-config")
                 .long("no-config")
-                .aliases(&["no-conf", "no-configuration"])
+                .aliases(["no-conf", "no-configuration"])
                 .help("Don't read nor write any config files.")
                 .num_args(0)
                 .requires_ifs([
@@ -231,7 +233,7 @@ fn run() -> Result<(), Error> {
 
     let client = rb::ClientBuilder::new()
         .build()
-        .map_err(Error::HttpClientCreateError)?;
+        .map_err(Error::HttpClientCreate)?;
 
     if !arg_matches
         .get_one("no-auto-update")
@@ -258,7 +260,7 @@ fn run() -> Result<(), Error> {
         quiet,
         arg_matches
             .get_many::<String>("username")
-            .map(|it| it.map(|v| v.as_str())),
+            .map(|it| it.map(String::as_str)),
         arg_matches.get_one("detach").copied().unwrap_or(false),
         max_tries,
     )

@@ -1,9 +1,7 @@
-use crate::{
-    config::{commit_config, Config},
-    error::Error,
-};
+#[cfg(all(target_os = "linux", feature = "secret-store"))]
+use crate::keyring::{get_saved_password, save_password};
+use crate::{config::Config, error::Error};
 use reqwest::{blocking as rb, header};
-use rpassword;
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
@@ -17,6 +15,41 @@ use std::{
 const LOGIN_API_URI: &str =
     "https://www.toontownrewritten.com/api/login?format=json";
 
+#[cfg(not(all(target_os = "linux", feature = "secret-store")))]
+fn get_saved_password(
+    config: &Config,
+    username: &str,
+) -> Result<Option<String>, Error> {
+    Ok(if config.store_passwords {
+        config
+            .accounts
+            .get(username)
+            .and_then(|val| {
+                if let serde_json::Value::String(p) = val {
+                    Some(p)
+                } else {
+                    None
+                }
+            })
+            .cloned()
+    } else {
+        None
+    })
+}
+
+#[cfg(not(all(target_os = "linux", feature = "secret-store")))]
+fn save_password<P: AsRef<Path>>(
+    config: &mut Config,
+    config_path: P,
+    username: String,
+    password: String,
+) -> Result<(), Error> {
+    config.add_account(username, password);
+    crate::config::commit_config(config, config_path)?;
+
+    Ok(())
+}
+
 pub fn login<'a, P: AsRef<Path>, A: Iterator<Item = &'a str>>(
     config: &mut Config,
     config_path: P,
@@ -25,7 +58,7 @@ pub fn login<'a, P: AsRef<Path>, A: Iterator<Item = &'a str>>(
     argv: A,
     children: &mut Vec<(String, process::Child, Instant)>,
 ) -> Result<(), Error> {
-    let (mut usernames, mut no_save) = (Vec::new(), false);
+    let (mut usernames, mut no_save) = (Vec::new(), !config.store_passwords);
     for arg in argv {
         match arg {
             "-n" | "--no-save" => no_save = true,
@@ -35,81 +68,31 @@ pub fn login<'a, P: AsRef<Path>, A: Iterator<Item = &'a str>>(
 
     let mut username_buf = String::new();
 
-    if !usernames.is_empty() {
-        for username in usernames {
-            if let Some(password) = config
-                .accounts
-                .get(username)
-                .and_then(|val| {
-                    if let serde_json::Value::String(p) = val {
-                        if !quiet {
-                            println!("Using saved password...");
-                        }
-
-                        Some(p)
-                    } else {
-                        None
-                    }
-                })
-                .cloned()
-            {
-                handle_name_and_pw(
-                    config,
-                    config_path.as_ref(),
-                    client,
-                    quiet,
-                    no_save,
-                    username.to_owned(),
-                    password,
-                )?
-                .map(|c| children.push(c));
-            } else {
-                print!("Password for {}: ", username);
-                io::stdout().flush().map_err(Error::StdoutError)?;
-
-                handle_name_and_pw(
-                    config,
-                    config_path.as_ref(),
-                    client,
-                    quiet,
-                    no_save,
-                    username.to_owned(),
-                    rpassword::read_password()
-                        .map_err(Error::PasswordReadError)?,
-                )?
-                .map(|c| children.push(c));
-            }
-        }
-    } else {
+    if usernames.is_empty() {
         print!("Username: ");
-        io::stdout().flush().map_err(Error::StdoutError)?;
+        io::stdout().flush().map_err(Error::Stdout)?;
         username_buf.reserve(0x10);
         io::stdin()
             .read_line(&mut username_buf)
-            .map_err(Error::StdinError)?;
+            .map_err(Error::Stdin)?;
         username_buf.truncate(username_buf.trim_end().len());
 
         let password = if let Some(password) =
-            config.accounts.get(&username_buf).and_then(|val| {
-                if let serde_json::Value::String(p) = val {
-                    if !quiet {
-                        println!("Using saved password...");
-                    }
+            get_saved_password(config, &username_buf)?
+        {
+            if !quiet {
+                println!("Using saved password...");
+            }
 
-                    Some(p)
-                } else {
-                    None
-                }
-            }) {
-            password.clone()
+            password
         } else {
-            print!("Password for {}: ", username_buf);
-            io::stdout().flush().map_err(Error::StdoutError)?;
+            print!("Password for {username_buf}: ");
+            io::stdout().flush().map_err(Error::Stdout)?;
 
-            rpassword::read_password().map_err(Error::PasswordReadError)?
+            rpassword::read_password().map_err(Error::PasswordRead)?
         };
 
-        handle_name_and_pw(
+        if let Some(c) = handle_name_and_pw(
             config,
             config_path,
             client,
@@ -117,8 +100,44 @@ pub fn login<'a, P: AsRef<Path>, A: Iterator<Item = &'a str>>(
             no_save,
             username_buf,
             password,
-        )?
-        .map(|c| children.push(c));
+        )? {
+            children.push(c);
+        }
+    } else {
+        for username in usernames {
+            if let Some(password) = get_saved_password(config, username)? {
+                if !quiet {
+                    println!("Using saved password...");
+                }
+
+                if let Some(c) = handle_name_and_pw(
+                    config,
+                    config_path.as_ref(),
+                    client,
+                    quiet,
+                    no_save,
+                    username.to_owned(),
+                    password,
+                )? {
+                    children.push(c);
+                }
+            } else {
+                print!("Password for {username}: ");
+                io::stdout().flush().map_err(Error::Stdout)?;
+
+                if let Some(c) = handle_name_and_pw(
+                    config,
+                    config_path.as_ref(),
+                    client,
+                    quiet,
+                    no_save,
+                    username.to_owned(),
+                    rpassword::read_password().map_err(Error::PasswordRead)?,
+                )? {
+                    children.push(c);
+                }
+            }
+        }
     }
 
     Ok(())
@@ -142,10 +161,16 @@ fn handle_name_and_pw<P: AsRef<Path>>(
         post_to_login_api(client, &params)?,
     )? {
         if !no_save {
-            let old_acc = config.add_account(username.clone(), password);
-            commit_config(config, config_path)?;
-            if !quiet && old_acc.is_none() {
+            let new_account = get_saved_password(config, &username)?.is_none();
+            save_password(config, config_path, username.clone(), password)?;
+            if !quiet && new_account {
+                #[cfg(not(all(
+                    target_os = "linux",
+                    feature = "secret-store"
+                )))]
                 println!("New account saved in config!");
+                #[cfg(all(target_os = "linux", feature = "secret-store"))]
+                println!("New account saved in default keyring!");
             }
         }
 
@@ -218,7 +243,7 @@ fn handle_login_negotiation(
                 return Ok(Some(response_json));
             }
             "delayed" => {
-                response_json = enqueue(client, quiet, &response_json)?
+                response_json = enqueue(client, quiet, &response_json)?;
             }
             "partial" => {
                 response_json =
@@ -248,7 +273,7 @@ fn handle_login_negotiation(
                 return Ok(None);
             }
             _ => {
-                return Err(Error::UnexpectedSuccessValue(success.to_owned()))
+                return Err(Error::UnexpectedSuccessValue(success.to_owned()));
             }
         }
     }
@@ -285,11 +310,11 @@ fn do_2fa(
                 "Expected \"banner\" key with String value",
             ))?,
     );
-    io::stdout().flush().map_err(Error::StdoutError)?;
+    io::stdout().flush().map_err(Error::Stdout)?;
     let mut app_token = String::with_capacity(0x10);
     io::stdin()
         .read_line(&mut app_token)
-        .map_err(Error::StdinError)?;
+        .map_err(Error::Stdin)?;
     app_token.truncate(app_token.trim_end().len());
 
     if app_token == "cancel" {
@@ -320,8 +345,7 @@ fn enqueue(
         ))?;
     if !quiet {
         println!(
-            "Waiting in queue... ETA: {}, position in line: {}",
-            eta,
+            "Waiting in queue... ETA: {eta}, position in line: {}",
             response_json
                 .get("position")
                 .and_then(|val| match val {
@@ -375,11 +399,11 @@ fn post_to_login_api<K: Ord + Serialize, V: Serialize>(
             .header(header::ACCEPT, "text/plain")
             .form(&params)
             .send()
-            .map_err(Error::PostError)?
+            .map_err(Error::Post)?
             .text()
-            .map_err(Error::PostError)?,
+            .map_err(Error::Post)?,
     )
-    .map_err(Error::DeserializeError)
+    .map_err(Error::Deserialize)
 }
 
 fn launch<S: AsRef<OsStr>, T: AsRef<OsStr>>(
@@ -418,7 +442,7 @@ fn launch<S: AsRef<OsStr>, T: AsRef<OsStr>>(
         command_buf
     };
 
-    process::Command::new(&command_text)
+    process::Command::new(command_text)
         .current_dir(&config.install_dir)
         .env("TTR_PLAYCOOKIE", play_cookie)
         .env("TTR_GAMESERVER", game_server)
@@ -426,5 +450,5 @@ fn launch<S: AsRef<OsStr>, T: AsRef<OsStr>>(
         .stdout(process::Stdio::null())
         .stderr(process::Stdio::null())
         .spawn()
-        .map_err(Error::ThreadSpawnError)
+        .map_err(Error::ThreadSpawn)
 }
